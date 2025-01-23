@@ -8,6 +8,7 @@
 #include <common/cli.h>
 
 #include "converters/converter-csv.hpp"
+#include "converters/converter-3d-csv.hpp"
 #include "converters/converter-png.hpp"
 #include "converters/converter-raw.hpp"
 #include "converters/converter-ply.hpp"
@@ -29,6 +30,7 @@ int main(int argc, char** argv) try
     cli::value<string> inputFilename('i', "input", "ros-bag-file", "", "ROS-bag filename", cli::required );
     cli::value<string> outputFilenamePng('p', "output-png", "png-path", "", "output PNG file(s) path");
     cli::value<string> outputFilenameCsv('v', "output-csv", "csv-path", "", "output CSV (depth matrix) file(s) path");
+    cli::value<string> outputFilename3dCsv('V', "output-3dcsv", "3dcsv-path", "", "output CSV (depth matrix) file(s) path");
     cli::value<string> outputFilenameRaw('r', "output-raw", "raw-path", "", "output RAW file(s) path");
     cli::value<string> outputFilenamePly('l', "output-ply", "ply-path", "", "output PLY file(s) path");
     cli::value<string> outputFilenameBin('b', "output-bin", "bin-path", "", "output BIN (depth matrix) file(s) path");
@@ -49,6 +51,7 @@ int main(int argc, char** argv) try
                         .arg( startTime )
                         .arg( outputFilenamePng )
                         .arg( outputFilenameCsv )
+                        .arg( outputFilename3dCsv )
                         .arg( outputFilenameRaw )
                         .arg( outputFilenamePly )
                         .arg( outputFilenameBin )
@@ -69,6 +72,14 @@ int main(int argc, char** argv) try
         converters.push_back(
             make_shared<rs2::tools::converter::converter_csv>(
                 outputFilenameCsv.getValue()
+                , streamType));
+    }
+
+    if (outputFilename3dCsv.isSet())
+    {
+        converters.push_back(
+            make_shared<rs2::tools::converter::converter_3d_csv>(
+                outputFilename3dCsv.getValue()
                 , streamType));
     }
 
