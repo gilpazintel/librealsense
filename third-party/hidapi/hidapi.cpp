@@ -695,6 +695,10 @@ hidapi_device * HID_API_EXPORT hid_open_path(const char *path)
     hidapi_device *dev = NULL;
     io_registry_entry_t entry = MACH_PORT_NULL;
 
+    IOHIDManagerRef hidManager = NULL;
+    CFSetRef deviceSet = NULL;
+    CFDictionaryRef matchingDict = NULL;
+
     dev = new_hid_device();
 
     /* Set up the HID Manager if it hasn't been done */
@@ -703,32 +707,46 @@ hidapi_device * HID_API_EXPORT hid_open_path(const char *path)
 
     bool return_error = false;
 
+    //////////
     /* Create a matching dictionary for the device */
-    CFMutableDictionaryRef matchingDict = IOServiceMatching(kIOUSBDeviceClassName); //#
+    matchingDict = IOServiceMatching(kIOUSBDeviceClassName); //#
     if (!matchingDict) {
         return NULL;
     }
 
-    /* Get the IORegistry entry for the given path */
-    entry = IOServiceGetMatchingService(kIOMainPortDefault, matchingDict); //#
-    if (entry == MACH_PORT_NULL) {
-        /* Path wasn't valid (maybe device was removed?) */
-        return_error = true;
+    /* Create an IOHIDManager */
+    hidManager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
+    if (!hidManager) {
+        return NULL;
     }
 
-    /* Get the IORegistry entry for the given path */
-    //entry = IORegistryEntryFromPath(kIOMainPortDefault, path);/////#
-    //if (entry == MACH_PORT_NULL) {
-    //    /* Path wasn't valid (maybe device was removed?) */
-    //    return_error = true;
-    //}
+    /* Set the HID device matching dictionary */
+    IOHIDManagerSetDeviceMatching(hidManager, matchingDict);
 
-    /* Create an IOHIDDevice for the entry */
-    dev->device_handle = IOHIDDeviceCreate(kCFAllocatorDefault, entry);
-    if (dev->device_handle == NULL) {
-        /* Error creating the HID device */
-        return_error = true;
+    /* Open the HID Manager */
+    IOReturn ret = IOHIDManagerOpen(hidManager, kIOHIDOptionsTypeNone);
+    if (ret != kIOReturnSuccess) {
+        return NULL;
     }
+
+    /* Get the set of devices that match the criteria */
+    deviceSet = IOHIDManagerCopyDevices(hidManager);
+    if (!deviceSet) {
+        return NULL;
+    }
+
+    /* Iterate over the devices and find the one that matches the path */
+    CFIndex numDevices = CFSetGetCount(deviceSet);
+    IOHIDDeviceRef* deviceRefs = (IOHIDDeviceRef*)malloc(sizeof(IOHIDDeviceRef) * numDevices);
+    CFSetGetValues(deviceSet, (const void**)deviceRefs);
+
+    for (CFIndex i = 0; i < numDevices; i++) {
+        IOHIDDeviceRef device = deviceRefs[i];
+        // Add logic to match the device with the given path
+        // For example, compare the device's properties with the path
+        // If a match is found, assign it to dev->device_handle
+    }
+    //////////
 
     /* Open the IOHIDDevice */
     IOReturn ret = IOHIDDeviceOpen(dev->device_handle, kIOHIDOptionsTypeSeizeDevice);
