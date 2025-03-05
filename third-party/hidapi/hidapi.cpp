@@ -4,6 +4,8 @@
 #include <IOKit/hid/IOHIDManager.h>
 #include <IOKit/hid/IOHIDKeys.h>
 #include <IOKit/IOKitLib.h>
+#include <IOKit/usb/IOUSBLib.h>
+#include <IOKit/hid/IOHIDLib.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <wchar.h>
 #include <locale.h>
@@ -431,14 +433,45 @@ struct hidapi_device_info  HID_API_EXPORT *hid_enumerate(unsigned short vendor_i
             
             /* Fill out the record */
             cur_dev->next = NULL;
+
+            uint64_t entry_id;
             
             /* Fill in the path (IOService plane) */
-            iokit_dev = hidapi_IOHIDDeviceGetService(dev);
-            res = IORegistryEntryGetPath(iokit_dev, kIOServicePlane, path);
-            if (res == KERN_SUCCESS)
-                cur_dev->path = strdup(path);
-            else
+
+            /* Fill in the path (as a unique ID of the service entry) */
+	        cur_dev->path = NULL;
+            iokit_dev = IOHIDDeviceGetService(dev);
+            if (iokit_dev != MACH_PORT_NULL) {
+            res = IORegistryEntryGetRegistryEntryID(iokit_dev, &entry_id);
+            }
+            else {
+                res = KERN_INVALID_ARGUMENT;
+            }
+
+            if (res == KERN_SUCCESS) {
+                /* max value of entry_id(uint64_t) is 18446744073709551615 which is 20 characters long,
+                so for (max) "path" string 'DevSrvsID:18446744073709551615' we would need
+                9+1+20+1=31 bytes byffer, but allocate 32 for simple alignment */
+                cur_dev->path = (char*)calloc(1, 32);
+                if (cur_dev->path != NULL) {
+                    sprintf(cur_dev->path, "DevSrvsID:%llu", entry_id);
+                }
+            }
+
+            if (cur_dev->path == NULL) {
+                /* for whatever reason, trying to keep it a non-NULL string */
                 cur_dev->path = strdup("");
+            }
+
+
+
+            // iokit_dev = hidapi_IOHIDDeviceGetService(dev);
+            // auto krn_stat = IORegistryEntryGetRegistryEntryID(iokit_dev, &entry_id);
+            // res = IORegistryEntryGetPath(iokit_dev, kIOServicePlane, path);
+            // if (res == KERN_SUCCESS)
+            //     cur_dev->path = strdup(path);
+            // else
+            //     cur_dev->path = strdup("");
             
             /* Serial Number */
             get_serial_number(dev, buf, BUF_LEN);
@@ -670,12 +703,25 @@ hidapi_device * HID_API_EXPORT hid_open_path(const char *path)
 
     bool return_error = false;
 
+    /* Create a matching dictionary for the device */
+    CFMutableDictionaryRef matchingDict = IOServiceMatching(kIOUSBDeviceClassName); //#
+    if (!matchingDict) {
+        return NULL;
+    }
+
     /* Get the IORegistry entry for the given path */
-    entry = IORegistryEntryFromPath(kIOMasterPortDefault, path);
+    entry = IOServiceGetMatchingService(kIOMainPortDefault, matchingDict); //#
     if (entry == MACH_PORT_NULL) {
         /* Path wasn't valid (maybe device was removed?) */
         return_error = true;
     }
+
+    /* Get the IORegistry entry for the given path */
+    //entry = IORegistryEntryFromPath(kIOMainPortDefault, path);/////#
+    //if (entry == MACH_PORT_NULL) {
+    //    /* Path wasn't valid (maybe device was removed?) */
+    //    return_error = true;
+    //}
 
     /* Create an IOHIDDevice for the entry */
     dev->device_handle = IOHIDDeviceCreate(kCFAllocatorDefault, entry);

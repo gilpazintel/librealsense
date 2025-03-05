@@ -23,11 +23,11 @@ function(get_nlohmann_json)
                      -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
                      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/external-projects/json-download"
-                     OUTPUT_QUIET
+#                     OUTPUT_QUIET
                      RESULT_VARIABLE configure_ret )
     execute_process( COMMAND "${CMAKE_COMMAND}" --build .
                      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/external-projects/json-download"
-                     OUTPUT_QUIET
+ #                    OUTPUT_QUIET
                      RESULT_VARIABLE build_ret )
 
     if( configure_ret OR build_ret )

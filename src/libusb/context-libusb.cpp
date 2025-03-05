@@ -15,7 +15,8 @@ namespace librealsense
             {
                 LOG_ERROR("libusb_init failed");
             }
-            _count = libusb_get_device_list(_ctx, &_list);
+            else
+                _count = libusb_get_device_list(_ctx, &_list);
         }
         
         usb_context::~usb_context()
