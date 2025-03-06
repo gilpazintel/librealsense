@@ -172,7 +172,7 @@ extern "C" {
 				This function returns a pointer to a #hid_device object on
 				success or NULL on failure.
 		*/
-                HID_API_EXPORT hidapi_device * HID_API_CALL hid_open_path(const char *path);
+                HID_API_EXPORT hidapi_device * HID_API_CALL hid_open_path(const char* path, unsigned short vendorID, unsigned short productID, const wchar_t* serial_number);
 
 		/** @brief Write an Output report to a HID device.
 

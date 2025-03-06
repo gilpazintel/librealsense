@@ -544,7 +544,7 @@ hidapi_device * HID_API_EXPORT hid_open(unsigned short vendor_id, unsigned short
     
     if (path_to_open) {
         /* Open the device */
-        handle = hid_open_path(path_to_open);
+        handle = hid_open_path(path_to_open, vendor_id, product_id, serial_number);
     }
     
     hid_free_enumeration(devs);
@@ -685,12 +685,36 @@ static void *read_thread(void *param)
     return NULL;
 }
 
+CFMutableDictionaryRef createMatchingDictionary(unsigned short vendorID, unsigned short productID) {
+    CFMutableDictionaryRef matchingDict = CFDictionaryCreateMutable(
+        kCFAllocatorDefault,
+        0,
+        &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks
+    );
+
+    if (matchingDict) {
+        CFNumberRef vendorIDRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &vendorID);
+        CFNumberRef productIDRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &productID);
+
+        if (vendorIDRef && productIDRef) {
+            CFDictionarySetValue(matchingDict, CFSTR(kIOHIDVendorIDKey), vendorIDRef);
+            CFDictionarySetValue(matchingDict, CFSTR(kIOHIDProductIDKey), productIDRef);
+        }
+
+        if (vendorIDRef) CFRelease(vendorIDRef);
+        if (productIDRef) CFRelease(productIDRef);
+    }
+
+    return matchingDict;
+}
+
 /* hid_open_path()
  *
  * path must be a valid path to an IOHIDDevice in the IOService plane
  * Example: "IOService:/AppleACPIPlatformExpert/PCI0@0/AppleACPIPCI/EHC1@1D,7/AppleUSBEHCI/PLAYSTATION(R)3 Controller@fd120000/IOUSBInterface@0/IOUSBHIDDriver"
  */
-hidapi_device * HID_API_EXPORT hid_open_path(const char *path)
+hidapi_device * HID_API_EXPORT hid_open_path(const char *path, unsigned short vendorID, unsigned short productID, const wchar_t* serial_number)
 {
     hidapi_device *dev = NULL;
     io_registry_entry_t entry = MACH_PORT_NULL;
@@ -709,7 +733,9 @@ hidapi_device * HID_API_EXPORT hid_open_path(const char *path)
 
     //////////
     /* Create a matching dictionary for the device */
-    matchingDict = IOServiceMatching(kIOUSBDeviceClassName); //#
+    //uint32_t vendorID = 0x8086; // Replace with your device's vendor ID
+    //uint32_t productID = 0x5678; // Replace with your device's product ID
+    matchingDict = createMatchingDictionary(vendorID, productID);
     if (!matchingDict) {
         return NULL;
     }
@@ -742,15 +768,26 @@ hidapi_device * HID_API_EXPORT hid_open_path(const char *path)
 
     for (CFIndex i = 0; i < numDevices; i++) {
         IOHIDDeviceRef device = deviceRefs[i];
-        // Add logic to match the device with the given path
-        // For example, compare the device's properties with the path
-        // If a match is found, assign it to dev->device_handle
+        get_serial_number(device, dev->serial_number, 256);
+
+        unsigned short dev_vid;
+        unsigned short dev_pid;
+        dev_vid = get_vendor_id(dev);
+        dev_pid = get_product_id(dev);
+        if(dev_vid == vendorID && dev_pid == productID && wcscmp(dev->serial_number, serial_number) == 0) {
+            dev->device_handle = device;
+            break;
+        }
     }
     //////////
+	if (dev->device_handle == NULL) {
+        /* Error creating the HID device */
+        return_error = true;
+    }
 
     /* Open the IOHIDDevice */
-    IOReturn ret = IOHIDDeviceOpen(dev->device_handle, kIOHIDOptionsTypeSeizeDevice);
-    if (ret == kIOReturnSuccess) {
+    if( return_error == false && IOHIDDeviceOpen(dev->device_handle, kIOHIDOptionsTypeSeizeDevice) == kIOReturnSuccess){
+
         char str[32];
 
         /* Create the buffers for receiving data */
