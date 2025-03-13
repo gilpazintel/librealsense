@@ -13,10 +13,13 @@ namespace librealsense
             auto sts = libusb_init(&_ctx);
             if(sts != LIBUSB_SUCCESS)
             {
-                LOG_ERROR("libusb_init failed");
+                LOG_ERROR("libusb_init failed : " << libusb_error_name(sts));
             }
             else
                 _count = libusb_get_device_list(_ctx, &_list);
+
+            // Set debug level
+            libusb_set_debug(_ctx, LIBUSB_LOG_LEVEL_DEBUG);
         }
         
         usb_context::~usb_context()

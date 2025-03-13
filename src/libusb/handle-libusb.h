@@ -95,8 +95,7 @@ namespace librealsense
 
             usb_status claim_interface(uint8_t interface)
             {
-                //auto status = libusb_detach_kernel_driver(_handle, interface);
-                auto s = libusb_set_configuration(_handle, interface);
+               
                 auto sts = libusb_claim_interface(_handle, interface);
 
                 if (sts != LIBUSB_SUCCESS)

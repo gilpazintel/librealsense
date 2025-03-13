@@ -16,6 +16,10 @@
 
 #include "hidapi.h"
 
+ // Global variables
+//static IOHIDManagerRef hid_mgr = NULL;
+static pthread_mutex_t hid_mgr_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /* Barrier implementation because Mac OSX doesn't have pthread_barrier.
  It also doesn't have clock_gettime(). So much for POSIX and SUSv2.
  This implementation came from Brent Priddy and was posted on
@@ -328,17 +332,30 @@ static io_service_t hidapi_IOHIDDeviceGetService(IOHIDDeviceRef device)
 /* Initialize the IOHIDManager. Return 0 for success and -1 for failure. */
 static int init_hid_manager(void)
 {
-    /* Initialize all the HID Manager Objects */
-    hid_mgr = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
-    if (hid_mgr) {
-        IOHIDManagerSetDeviceMatching(hid_mgr, NULL);
-        IOHIDManagerScheduleWithRunLoop(hid_mgr, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+    // Lock the mutex to ensure thread safety
+    pthread_mutex_lock(&hid_mgr_mutex);
+
+    // Check if the HID manager is already initialized
+    if (hid_mgr == NULL) {
+        // Initialize the HID Manager
+        hid_mgr = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
+        if (hid_mgr) {
+            IOHIDManagerSetDeviceMatching(hid_mgr, NULL);
+            IOHIDManagerScheduleWithRunLoop(hid_mgr, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+            pthread_mutex_unlock(&hid_mgr_mutex); // Unlock the mutex
+            return 0;
+        }
+    }
+    else {
+        // If already initialized, return success
+        pthread_mutex_unlock(&hid_mgr_mutex); // Unlock the mutex
         return 0;
     }
-    
+
+    // Unlock the mutex before returning failure
+    pthread_mutex_unlock(&hid_mgr_mutex);
     return -1;
 }
-
 /* Initialize the IOHIDManager if necessary. This is the public function, and
  it is safe to call this function repeatedly. Return 0 for success and -1
  for failure. */
@@ -462,16 +479,6 @@ struct hidapi_device_info  HID_API_EXPORT *hid_enumerate(unsigned short vendor_i
                 /* for whatever reason, trying to keep it a non-NULL string */
                 cur_dev->path = strdup("");
             }
-
-
-
-            // iokit_dev = hidapi_IOHIDDeviceGetService(dev);
-            // auto krn_stat = IORegistryEntryGetRegistryEntryID(iokit_dev, &entry_id);
-            // res = IORegistryEntryGetPath(iokit_dev, kIOServicePlane, path);
-            // if (res == KERN_SUCCESS)
-            //     cur_dev->path = strdup(path);
-            // else
-            //     cur_dev->path = strdup("");
             
             /* Serial Number */
             get_serial_number(dev, buf, BUF_LEN);
@@ -693,9 +700,12 @@ CFMutableDictionaryRef createMatchingDictionary(unsigned short vendorID, unsigne
         &kCFTypeDictionaryValueCallBacks
     );
 
+    uint32_t vendor = (uint32_t)vendorID;
+    uint32_t product = (uint32_t)productID;
+
     if (matchingDict) {
-        CFNumberRef vendorIDRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &vendorID);
-        CFNumberRef productIDRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &productID);
+        CFNumberRef vendorIDRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &vendor);
+        CFNumberRef productIDRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &product);
 
         if (vendorIDRef && productIDRef) {
             CFDictionarySetValue(matchingDict, CFSTR(kIOHIDVendorIDKey), vendorIDRef);
@@ -722,6 +732,8 @@ hidapi_device * HID_API_EXPORT hid_open_path(const char *path, unsigned short ve
     IOHIDManagerRef hidManager = NULL;
     CFSetRef deviceSet = NULL;
     CFDictionaryRef matchingDict = NULL;
+    #define BUF_LEN 256
+    wchar_t buf[BUF_LEN];
 
     dev = new_hid_device();
 
@@ -733,8 +745,8 @@ hidapi_device * HID_API_EXPORT hid_open_path(const char *path, unsigned short ve
 
     //////////
     /* Create a matching dictionary for the device */
-    //uint32_t vendorID = 0x8086; // Replace with your device's vendor ID
-    //uint32_t productID = 0x5678; // Replace with your device's product ID
+    //uint32_t vendorID = 0x8086; 
+    //uint32_t productID = 0xB5C; 
     matchingDict = createMatchingDictionary(vendorID, productID);
     if (!matchingDict) {
         return NULL;
@@ -768,13 +780,14 @@ hidapi_device * HID_API_EXPORT hid_open_path(const char *path, unsigned short ve
 
     for (CFIndex i = 0; i < numDevices; i++) {
         IOHIDDeviceRef device = deviceRefs[i];
-        get_serial_number(device, dev->serial_number, 256);
+        get_serial_number(device, buf, BUF_LEN);
+        //get_serial_number(device, dev->serial_number, 256);
 
         unsigned short dev_vid;
         unsigned short dev_pid;
-        dev_vid = get_vendor_id(dev);
-        dev_pid = get_product_id(dev);
-        if(dev_vid == vendorID && dev_pid == productID && wcscmp(dev->serial_number, serial_number) == 0) {
+        dev_vid = get_vendor_id(device);
+        dev_pid = get_product_id(device);
+        if(dev_vid == vendorID && dev_pid == productID && wcscmp(buf, serial_number) == 0) {
             dev->device_handle = device;
             break;
         }
